@@ -19,20 +19,33 @@ allowed-tools:
 ## Preamble (run first)
 
 ```bash
-_UPD=$(~/.claude/skills/gstack/bin/gstack-update-check 2>/dev/null || .claude/skills/gstack/bin/gstack-update-check 2>/dev/null || true)
+_GSTACK_DIR=""
+_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
+[ -n "$_ROOT" ] && [ -d "$_ROOT/.claude/skills/gstack" ] && _GSTACK_DIR="$_ROOT/.claude/skills/gstack"
+[ -z "$_GSTACK_DIR" ] && [ -n "$_ROOT" ] && [ -d "$_ROOT/.codex/skills/gstack" ] && _GSTACK_DIR="$_ROOT/.codex/skills/gstack"
+[ -z "$_GSTACK_DIR" ] && [ -d "$HOME/.claude/skills/gstack" ] && _GSTACK_DIR="$HOME/.claude/skills/gstack"
+[ -z "$_GSTACK_DIR" ] && [ -d "$HOME/.codex/skills/gstack" ] && _GSTACK_DIR="$HOME/.codex/skills/gstack"
+_UPD=""
+[ -n "$_GSTACK_DIR" ] && [ -x "$_GSTACK_DIR/bin/gstack-update-check" ] && _UPD=$("$_GSTACK_DIR/bin/gstack-update-check" 2>/dev/null || true)
+[ -z "$_UPD" ] && _UPD=$(~/.claude/skills/gstack/bin/gstack-update-check 2>/dev/null || ~/.codex/skills/gstack/bin/gstack-update-check 2>/dev/null || .claude/skills/gstack/bin/gstack-update-check 2>/dev/null || .codex/skills/gstack/bin/gstack-update-check 2>/dev/null || true)
 [ -n "$_UPD" ] && echo "$_UPD" || true
 mkdir -p ~/.gstack/sessions
 touch ~/.gstack/sessions/"$PPID"
 _SESSIONS=$(find ~/.gstack/sessions -mmin -120 -type f 2>/dev/null | wc -l | tr -d ' ')
 find ~/.gstack/sessions -mmin +120 -type f -delete 2>/dev/null || true
-_CONTRIB=$(~/.claude/skills/gstack/bin/gstack-config get gstack_contributor 2>/dev/null || true)
+_CONTRIB=""
+[ -n "$_GSTACK_DIR" ] && [ -x "$_GSTACK_DIR/bin/gstack-config" ] && _CONTRIB=$("$_GSTACK_DIR/bin/gstack-config" get gstack_contributor 2>/dev/null || true)
+[ -z "$_CONTRIB" ] && _CONTRIB=$(~/.claude/skills/gstack/bin/gstack-config get gstack_contributor 2>/dev/null || ~/.codex/skills/gstack/bin/gstack-config get gstack_contributor 2>/dev/null || .claude/skills/gstack/bin/gstack-config get gstack_contributor 2>/dev/null || .codex/skills/gstack/bin/gstack-config get gstack_contributor 2>/dev/null || true)
 _BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
 echo "BRANCH: $_BRANCH"
+echo "GSTACK_DIR: ${_GSTACK_DIR:-unknown}"
 _LAKE_SEEN=$([ -f ~/.gstack/.completeness-intro-seen ] && echo "yes" || echo "no")
 echo "LAKE_INTRO: $_LAKE_SEEN"
 ```
 
-If output shows `UPGRADE_AVAILABLE <old> <new>`: read `~/.claude/skills/gstack/gstack-upgrade/SKILL.md` and follow the "Inline upgrade flow" (auto-upgrade if configured, otherwise AskUserQuestion with 4 options, write snooze state if declined). If `JUST_UPGRADED <from> <to>`: tell user "Running gstack v{to} (just updated!)" and continue.
+Use the printed `GSTACK_DIR` value for any later gstack file reference. If a later step mentions `.claude/skills/...` or `~/.claude/skills/...`, treat it as shorthand for the equivalent path under `GSTACK_DIR`. If your environment does not expose tools literally named `Read`, `Edit`, or `AskUserQuestion`, use the equivalent built-in file viewer, editor, or user-prompt mechanism.
+
+If output shows `UPGRADE_AVAILABLE <old> <new>`: read `$GSTACK_DIR/gstack-upgrade/SKILL.md` and follow the "Inline upgrade flow" (auto-upgrade if configured, otherwise ask the user with 4 options, write snooze state if declined). If `JUST_UPGRADED <from> <to>`: tell user "Running gstack v{to} (just updated!)" and continue.
 
 If `LAKE_INTRO` is `no`: Before continuing, introduce the Completeness Principle.
 Tell the user: "gstack follows the **Boil the Lake** principle — always do the complete
@@ -131,7 +144,9 @@ State persists between calls (cookies, tabs, login sessions).
 _ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 B=""
 [ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/browse/dist/browse" ] && B="$_ROOT/.claude/skills/gstack/browse/dist/browse"
-[ -z "$B" ] && B=~/.claude/skills/gstack/browse/dist/browse
+[ -z "$B" ] && [ -n "$_ROOT" ] && [ -x "$_ROOT/.codex/skills/gstack/browse/dist/browse" ] && B="$_ROOT/.codex/skills/gstack/browse/dist/browse"
+[ -z "$B" ] && [ -x "$HOME/.claude/skills/gstack/browse/dist/browse" ] && B="$HOME/.claude/skills/gstack/browse/dist/browse"
+[ -z "$B" ] && [ -x "$HOME/.codex/skills/gstack/browse/dist/browse" ] && B="$HOME/.codex/skills/gstack/browse/dist/browse"
 if [ -x "$B" ]; then
   echo "READY: $B"
 else

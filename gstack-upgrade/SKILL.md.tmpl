@@ -76,15 +76,27 @@ Continue with the current skill.
 if [ -d "$HOME/.claude/skills/gstack/.git" ]; then
   INSTALL_TYPE="global-git"
   INSTALL_DIR="$HOME/.claude/skills/gstack"
+elif [ -d "$HOME/.codex/skills/gstack/.git" ]; then
+  INSTALL_TYPE="global-git"
+  INSTALL_DIR="$HOME/.codex/skills/gstack"
 elif [ -d ".claude/skills/gstack/.git" ]; then
   INSTALL_TYPE="local-git"
   INSTALL_DIR=".claude/skills/gstack"
+elif [ -d ".codex/skills/gstack/.git" ]; then
+  INSTALL_TYPE="local-git"
+  INSTALL_DIR=".codex/skills/gstack"
 elif [ -d ".claude/skills/gstack" ]; then
   INSTALL_TYPE="vendored"
   INSTALL_DIR=".claude/skills/gstack"
+elif [ -d ".codex/skills/gstack" ]; then
+  INSTALL_TYPE="vendored"
+  INSTALL_DIR=".codex/skills/gstack"
 elif [ -d "$HOME/.claude/skills/gstack" ]; then
   INSTALL_TYPE="vendored-global"
   INSTALL_DIR="$HOME/.claude/skills/gstack"
+elif [ -d "$HOME/.codex/skills/gstack" ]; then
+  INSTALL_TYPE="vendored-global"
+  INSTALL_DIR="$HOME/.codex/skills/gstack"
 else
   echo "ERROR: gstack not found"
   exit 1
@@ -141,6 +153,13 @@ if [ -n "$_ROOT" ] && [ -d "$_ROOT/.claude/skills/gstack" ]; then
     LOCAL_GSTACK="$_ROOT/.claude/skills/gstack"
   fi
 fi
+if [ -z "$LOCAL_GSTACK" ] && [ -n "$_ROOT" ] && [ -d "$_ROOT/.codex/skills/gstack" ]; then
+  _RESOLVED_LOCAL=$(cd "$_ROOT/.codex/skills/gstack" && pwd -P)
+  _RESOLVED_PRIMARY=$(cd "$INSTALL_DIR" && pwd -P)
+  if [ "$_RESOLVED_LOCAL" != "$_RESOLVED_PRIMARY" ]; then
+    LOCAL_GSTACK="$_ROOT/.codex/skills/gstack"
+  fi
+fi
 echo "LOCAL_GSTACK=$LOCAL_GSTACK"
 ```
 
@@ -152,7 +171,7 @@ rm -rf "$LOCAL_GSTACK/.git"
 cd "$LOCAL_GSTACK" && ./setup
 rm -rf "$LOCAL_GSTACK.bak"
 ```
-Tell user: "Also updated vendored copy at `$LOCAL_GSTACK` — commit `.claude/skills/gstack/` when you're ready."
+Tell user: "Also updated vendored copy at `$LOCAL_GSTACK` — commit that vendored `gstack/` directory when you're ready."
 
 If `./setup` fails, restore from backup and warn the user:
 ```bash
@@ -218,6 +237,6 @@ LOCAL_VER=$(cat "$LOCAL_GSTACK/VERSION" 2>/dev/null || echo "unknown")
 echo "PRIMARY=$PRIMARY_VER LOCAL=$LOCAL_VER"
 ```
 
-**If versions differ:** follow the Step 4.5 sync bash block above to update the local copy from the primary. Tell user: "Global v{PRIMARY_VER} is up to date. Updated local vendored copy from v{LOCAL_VER} → v{PRIMARY_VER}. Commit `.claude/skills/gstack/` when you're ready."
+**If versions differ:** follow the Step 4.5 sync bash block above to update the local copy from the primary. Tell user: "Global v{PRIMARY_VER} is up to date. Updated local vendored copy from v{LOCAL_VER} → v{PRIMARY_VER}. Commit that vendored `gstack/` directory when you're ready."
 
 **If versions match:** tell the user "You're on the latest version (v{PRIMARY_VER}). Global and local vendored copy are both up to date."

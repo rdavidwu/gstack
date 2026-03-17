@@ -19,20 +19,33 @@ allowed-tools:
 ## Preamble (run first)
 
 ```bash
-_UPD=$(~/.claude/skills/gstack/bin/gstack-update-check 2>/dev/null || .claude/skills/gstack/bin/gstack-update-check 2>/dev/null || true)
+_GSTACK_DIR=""
+_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
+[ -n "$_ROOT" ] && [ -d "$_ROOT/.claude/skills/gstack" ] && _GSTACK_DIR="$_ROOT/.claude/skills/gstack"
+[ -z "$_GSTACK_DIR" ] && [ -n "$_ROOT" ] && [ -d "$_ROOT/.codex/skills/gstack" ] && _GSTACK_DIR="$_ROOT/.codex/skills/gstack"
+[ -z "$_GSTACK_DIR" ] && [ -d "$HOME/.claude/skills/gstack" ] && _GSTACK_DIR="$HOME/.claude/skills/gstack"
+[ -z "$_GSTACK_DIR" ] && [ -d "$HOME/.codex/skills/gstack" ] && _GSTACK_DIR="$HOME/.codex/skills/gstack"
+_UPD=""
+[ -n "$_GSTACK_DIR" ] && [ -x "$_GSTACK_DIR/bin/gstack-update-check" ] && _UPD=$("$_GSTACK_DIR/bin/gstack-update-check" 2>/dev/null || true)
+[ -z "$_UPD" ] && _UPD=$(~/.claude/skills/gstack/bin/gstack-update-check 2>/dev/null || ~/.codex/skills/gstack/bin/gstack-update-check 2>/dev/null || .claude/skills/gstack/bin/gstack-update-check 2>/dev/null || .codex/skills/gstack/bin/gstack-update-check 2>/dev/null || true)
 [ -n "$_UPD" ] && echo "$_UPD" || true
 mkdir -p ~/.gstack/sessions
 touch ~/.gstack/sessions/"$PPID"
 _SESSIONS=$(find ~/.gstack/sessions -mmin -120 -type f 2>/dev/null | wc -l | tr -d ' ')
 find ~/.gstack/sessions -mmin +120 -type f -delete 2>/dev/null || true
-_CONTRIB=$(~/.claude/skills/gstack/bin/gstack-config get gstack_contributor 2>/dev/null || true)
+_CONTRIB=""
+[ -n "$_GSTACK_DIR" ] && [ -x "$_GSTACK_DIR/bin/gstack-config" ] && _CONTRIB=$("$_GSTACK_DIR/bin/gstack-config" get gstack_contributor 2>/dev/null || true)
+[ -z "$_CONTRIB" ] && _CONTRIB=$(~/.claude/skills/gstack/bin/gstack-config get gstack_contributor 2>/dev/null || ~/.codex/skills/gstack/bin/gstack-config get gstack_contributor 2>/dev/null || .claude/skills/gstack/bin/gstack-config get gstack_contributor 2>/dev/null || .codex/skills/gstack/bin/gstack-config get gstack_contributor 2>/dev/null || true)
 _BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
 echo "BRANCH: $_BRANCH"
+echo "GSTACK_DIR: ${_GSTACK_DIR:-unknown}"
 _LAKE_SEEN=$([ -f ~/.gstack/.completeness-intro-seen ] && echo "yes" || echo "no")
 echo "LAKE_INTRO: $_LAKE_SEEN"
 ```
 
-If output shows `UPGRADE_AVAILABLE <old> <new>`: read `~/.claude/skills/gstack/gstack-upgrade/SKILL.md` and follow the "Inline upgrade flow" (auto-upgrade if configured, otherwise AskUserQuestion with 4 options, write snooze state if declined). If `JUST_UPGRADED <from> <to>`: tell user "Running gstack v{to} (just updated!)" and continue.
+Use the printed `GSTACK_DIR` value for any later gstack file reference. If a later step mentions `.claude/skills/...` or `~/.claude/skills/...`, treat it as shorthand for the equivalent path under `GSTACK_DIR`. If your environment does not expose tools literally named `Read`, `Edit`, or `AskUserQuestion`, use the equivalent built-in file viewer, editor, or user-prompt mechanism.
+
+If output shows `UPGRADE_AVAILABLE <old> <new>`: read `$GSTACK_DIR/gstack-upgrade/SKILL.md` and follow the "Inline upgrade flow" (auto-upgrade if configured, otherwise ask the user with 4 options, write snooze state if declined). If `JUST_UPGRADED <from> <to>`: tell user "Running gstack v{to} (just updated!)" and continue.
 
 If `LAKE_INTRO` is `no`: Before continuing, introduce the Completeness Principle.
 Tell the user: "gstack follows the **Boil the Lake** principle — always do the complete
@@ -194,7 +207,7 @@ For LLM/prompt changes: check the "Prompt/LLM changes" file patterns listed in C
 After producing the test diagram, write a test plan artifact to the project directory so `/qa` and `/qa-only` can consume it as primary test input (replacing the lossy git-diff heuristic):
 
 ```bash
-eval $(~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null)
+eval $(~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null || ~/.codex/skills/gstack/bin/gstack-slug 2>/dev/null || .claude/skills/gstack/bin/gstack-slug 2>/dev/null || .codex/skills/gstack/bin/gstack-slug 2>/dev/null)
 USER=$(whoami)
 DATETIME=$(date +%Y%m%d-%H%M%S)
 mkdir -p ~/.gstack/projects/$SLUG
@@ -251,7 +264,7 @@ Every plan review MUST produce a "NOT in scope" section listing work that was co
 List existing code/flows that already partially solve sub-problems in this plan, and whether the plan reuses them or unnecessarily rebuilds them.
 
 ### TODOS.md updates
-After all review sections are complete, present each potential TODO as its own individual AskUserQuestion. Never batch TODOs — one per question. Never silently skip this step. Follow the format in `.claude/skills/review/TODOS-format.md`.
+After all review sections are complete, present each potential TODO as its own individual AskUserQuestion. Never batch TODOs — one per question. Never silently skip this step. Follow the format in `$GSTACK_DIR/review/TODOS-format.md`.
 
 For each TODO, describe:
 * **What:** One-line description of the work.
@@ -303,7 +316,7 @@ Check the git log for this branch. If there are prior commits suggesting a previ
 After producing the Completion Summary above, persist the review result:
 
 ```bash
-eval $(~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null)
+eval $(~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null || ~/.codex/skills/gstack/bin/gstack-slug 2>/dev/null || .claude/skills/gstack/bin/gstack-slug 2>/dev/null || .codex/skills/gstack/bin/gstack-slug 2>/dev/null)
 mkdir -p ~/.gstack/projects/$SLUG
 echo '{"skill":"plan-eng-review","timestamp":"TIMESTAMP","status":"STATUS","unresolved":N,"critical_gaps":N,"mode":"MODE"}' >> ~/.gstack/projects/$SLUG/$BRANCH-reviews.jsonl
 ```
@@ -320,10 +333,10 @@ Substitute values from the Completion Summary:
 After completing the review, read the review log and config to display the dashboard.
 
 ```bash
-eval $(~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null)
+eval $(~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null || ~/.codex/skills/gstack/bin/gstack-slug 2>/dev/null || .claude/skills/gstack/bin/gstack-slug 2>/dev/null || .codex/skills/gstack/bin/gstack-slug 2>/dev/null || ~/.codex/skills/gstack/bin/gstack-slug 2>/dev/null || .claude/skills/gstack/bin/gstack-slug 2>/dev/null || .codex/skills/gstack/bin/gstack-slug 2>/dev/null)
 cat ~/.gstack/projects/$SLUG/$BRANCH-reviews.jsonl 2>/dev/null || echo "NO_REVIEWS"
 echo "---CONFIG---"
-~/.claude/skills/gstack/bin/gstack-config get skip_eng_review 2>/dev/null || echo "false"
+~/.claude/skills/gstack/bin/gstack-config get skip_eng_review 2>/dev/null || ~/.codex/skills/gstack/bin/gstack-config get skip_eng_review 2>/dev/null || .claude/skills/gstack/bin/gstack-config get skip_eng_review 2>/dev/null || .codex/skills/gstack/bin/gstack-config get skip_eng_review 2>/dev/null || echo "false"
 ```
 
 Parse the output. Find the most recent entry for each skill (plan-ceo-review, plan-eng-review, plan-design-review). Ignore entries with timestamps older than 7 days. Display:

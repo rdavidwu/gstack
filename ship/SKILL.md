@@ -19,20 +19,33 @@ allowed-tools:
 ## Preamble (run first)
 
 ```bash
-_UPD=$(~/.claude/skills/gstack/bin/gstack-update-check 2>/dev/null || .claude/skills/gstack/bin/gstack-update-check 2>/dev/null || true)
+_GSTACK_DIR=""
+_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
+[ -n "$_ROOT" ] && [ -d "$_ROOT/.claude/skills/gstack" ] && _GSTACK_DIR="$_ROOT/.claude/skills/gstack"
+[ -z "$_GSTACK_DIR" ] && [ -n "$_ROOT" ] && [ -d "$_ROOT/.codex/skills/gstack" ] && _GSTACK_DIR="$_ROOT/.codex/skills/gstack"
+[ -z "$_GSTACK_DIR" ] && [ -d "$HOME/.claude/skills/gstack" ] && _GSTACK_DIR="$HOME/.claude/skills/gstack"
+[ -z "$_GSTACK_DIR" ] && [ -d "$HOME/.codex/skills/gstack" ] && _GSTACK_DIR="$HOME/.codex/skills/gstack"
+_UPD=""
+[ -n "$_GSTACK_DIR" ] && [ -x "$_GSTACK_DIR/bin/gstack-update-check" ] && _UPD=$("$_GSTACK_DIR/bin/gstack-update-check" 2>/dev/null || true)
+[ -z "$_UPD" ] && _UPD=$(~/.claude/skills/gstack/bin/gstack-update-check 2>/dev/null || ~/.codex/skills/gstack/bin/gstack-update-check 2>/dev/null || .claude/skills/gstack/bin/gstack-update-check 2>/dev/null || .codex/skills/gstack/bin/gstack-update-check 2>/dev/null || true)
 [ -n "$_UPD" ] && echo "$_UPD" || true
 mkdir -p ~/.gstack/sessions
 touch ~/.gstack/sessions/"$PPID"
 _SESSIONS=$(find ~/.gstack/sessions -mmin -120 -type f 2>/dev/null | wc -l | tr -d ' ')
 find ~/.gstack/sessions -mmin +120 -type f -delete 2>/dev/null || true
-_CONTRIB=$(~/.claude/skills/gstack/bin/gstack-config get gstack_contributor 2>/dev/null || true)
+_CONTRIB=""
+[ -n "$_GSTACK_DIR" ] && [ -x "$_GSTACK_DIR/bin/gstack-config" ] && _CONTRIB=$("$_GSTACK_DIR/bin/gstack-config" get gstack_contributor 2>/dev/null || true)
+[ -z "$_CONTRIB" ] && _CONTRIB=$(~/.claude/skills/gstack/bin/gstack-config get gstack_contributor 2>/dev/null || ~/.codex/skills/gstack/bin/gstack-config get gstack_contributor 2>/dev/null || .claude/skills/gstack/bin/gstack-config get gstack_contributor 2>/dev/null || .codex/skills/gstack/bin/gstack-config get gstack_contributor 2>/dev/null || true)
 _BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
 echo "BRANCH: $_BRANCH"
+echo "GSTACK_DIR: ${_GSTACK_DIR:-unknown}"
 _LAKE_SEEN=$([ -f ~/.gstack/.completeness-intro-seen ] && echo "yes" || echo "no")
 echo "LAKE_INTRO: $_LAKE_SEEN"
 ```
 
-If output shows `UPGRADE_AVAILABLE <old> <new>`: read `~/.claude/skills/gstack/gstack-upgrade/SKILL.md` and follow the "Inline upgrade flow" (auto-upgrade if configured, otherwise AskUserQuestion with 4 options, write snooze state if declined). If `JUST_UPGRADED <from> <to>`: tell user "Running gstack v{to} (just updated!)" and continue.
+Use the printed `GSTACK_DIR` value for any later gstack file reference. If a later step mentions `.claude/skills/...` or `~/.claude/skills/...`, treat it as shorthand for the equivalent path under `GSTACK_DIR`. If your environment does not expose tools literally named `Read`, `Edit`, or `AskUserQuestion`, use the equivalent built-in file viewer, editor, or user-prompt mechanism.
+
+If output shows `UPGRADE_AVAILABLE <old> <new>`: read `$GSTACK_DIR/gstack-upgrade/SKILL.md` and follow the "Inline upgrade flow" (auto-upgrade if configured, otherwise ask the user with 4 options, write snooze state if declined). If `JUST_UPGRADED <from> <to>`: tell user "Running gstack v{to} (just updated!)" and continue.
 
 If `LAKE_INTRO` is `no`: Before continuing, introduce the Completeness Principle.
 Tell the user: "gstack follows the **Boil the Lake** principle — always do the complete
@@ -180,10 +193,10 @@ You are running the `/ship` workflow. This is a **non-interactive, fully automat
 After completing the review, read the review log and config to display the dashboard.
 
 ```bash
-eval $(~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null)
+eval $(~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null || ~/.codex/skills/gstack/bin/gstack-slug 2>/dev/null || .claude/skills/gstack/bin/gstack-slug 2>/dev/null || .codex/skills/gstack/bin/gstack-slug 2>/dev/null || ~/.codex/skills/gstack/bin/gstack-slug 2>/dev/null || .claude/skills/gstack/bin/gstack-slug 2>/dev/null || .codex/skills/gstack/bin/gstack-slug 2>/dev/null)
 cat ~/.gstack/projects/$SLUG/$BRANCH-reviews.jsonl 2>/dev/null || echo "NO_REVIEWS"
 echo "---CONFIG---"
-~/.claude/skills/gstack/bin/gstack-config get skip_eng_review 2>/dev/null || echo "false"
+~/.claude/skills/gstack/bin/gstack-config get skip_eng_review 2>/dev/null || ~/.codex/skills/gstack/bin/gstack-config get skip_eng_review 2>/dev/null || .claude/skills/gstack/bin/gstack-config get skip_eng_review 2>/dev/null || .codex/skills/gstack/bin/gstack-config get skip_eng_review 2>/dev/null || echo "false"
 ```
 
 Parse the output. Find the most recent entry for each skill (plan-ceo-review, plan-eng-review, plan-design-review). Ignore entries with timestamps older than 7 days. Display:
@@ -217,7 +230,7 @@ If the Eng Review is NOT "CLEAR":
 
 1. **Check for a prior override on this branch:**
    ```bash
-   eval $(~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null)
+   eval $(~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null || ~/.codex/skills/gstack/bin/gstack-slug 2>/dev/null || .claude/skills/gstack/bin/gstack-slug 2>/dev/null || .codex/skills/gstack/bin/gstack-slug 2>/dev/null)
    grep '"skill":"ship-review-override"' ~/.gstack/projects/$SLUG/$BRANCH-reviews.jsonl 2>/dev/null || echo "NO_OVERRIDE"
    ```
    If an override exists, display the dashboard and note "Review gate previously accepted — continuing." Do NOT ask again.
@@ -230,7 +243,7 @@ If the Eng Review is NOT "CLEAR":
 
 3. **If the user chooses A or C,** persist the decision so future `/ship` runs on this branch skip the gate:
    ```bash
-   eval $(~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null)
+   eval $(~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null || ~/.codex/skills/gstack/bin/gstack-slug 2>/dev/null || .claude/skills/gstack/bin/gstack-slug 2>/dev/null || .codex/skills/gstack/bin/gstack-slug 2>/dev/null)
    echo '{"skill":"ship-review-override","timestamp":"'"$(date -u +%Y-%m-%dT%H:%M:%SZ)"'","decision":"USER_CHOICE"}' >> ~/.gstack/projects/$SLUG/$BRANCH-reviews.jsonl
    ```
    Substitute USER_CHOICE with "ship_anyway" or "not_relevant".
@@ -634,7 +647,7 @@ Coverage line: `Test Coverage Audit: N new code paths. M covered (X%). K tests g
 
 Review the diff for structural issues that tests don't catch.
 
-1. Read `.claude/skills/review/checklist.md`. If the file cannot be read, **STOP** and report the error.
+1. Read `$GSTACK_DIR/review/checklist.md`. If the file cannot be read, **STOP** and report the error.
 
 2. Run `git diff origin/<base>` to get the full diff (scoped to feature changes against the freshly-fetched base branch).
 
@@ -668,7 +681,7 @@ Save the review output — it goes into the PR body in Step 8.
 
 ## Step 3.75: Address Greptile review comments (if PR exists)
 
-Read `.claude/skills/review/greptile-triage.md` and follow the fetch, filter, classify, and **escalation detection** steps.
+Read `$GSTACK_DIR/review/greptile-triage.md` and follow the fetch, filter, classify, and **escalation detection** steps.
 
 **If no PR exists, `gh` fails, API returns an error, or there are zero Greptile comments:** Skip this step silently. Continue to Step 4.
 
@@ -750,7 +763,7 @@ For each classified comment:
 
 Cross-reference the project's TODOS.md against the changes being shipped. Mark completed items automatically; prompt only if the file is missing or disorganized.
 
-Read `.claude/skills/review/TODOS-format.md` for the canonical format reference.
+Read `$GSTACK_DIR/review/TODOS-format.md` for the canonical format reference.
 
 **1. Check if TODOS.md exists** in the repository root.
 

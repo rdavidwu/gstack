@@ -32,11 +32,15 @@ export function locateBinary(): string | null {
   if (root) {
     const local = join(root, '.claude', 'skills', 'gstack', 'browse', 'dist', 'browse');
     if (existsSync(local)) return local;
+    const localCodex = join(root, '.codex', 'skills', 'gstack', 'browse', 'dist', 'browse');
+    if (existsSync(localCodex)) return localCodex;
   }
 
   // Global fallback
   const global = join(home, '.claude', 'skills', 'gstack', 'browse', 'dist', 'browse');
   if (existsSync(global)) return global;
+  const globalCodex = join(home, '.codex', 'skills', 'gstack', 'browse', 'dist', 'browse');
+  if (existsSync(globalCodex)) return globalCodex;
 
   return null;
 }
