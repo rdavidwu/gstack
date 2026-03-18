@@ -15,7 +15,65 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 const ROOT = path.resolve(import.meta.dir, '..');
+
+type Target = 'universal' | 'codex';
+
+function getFlagValue(flag: string): string | null {
+  const index = process.argv.indexOf(flag);
+  if (index === -1) return null;
+  return process.argv[index + 1] ?? null;
+}
+
 const DRY_RUN = process.argv.includes('--dry-run');
+const TARGET = (getFlagValue('--target') ?? 'universal') as Target;
+const OUT_DIR = getFlagValue('--out-dir');
+const OUTPUT_ROOT = OUT_DIR ? path.resolve(ROOT, OUT_DIR) : ROOT;
+
+if (!['universal', 'codex'].includes(TARGET)) {
+  throw new Error(`Unsupported --target value "${TARGET}". Expected "universal" or "codex".`);
+}
+
+function commandCandidates(relPath: string, args = ''): string[] {
+  const suffix = args ? ` ${args}` : '';
+  return [
+    `~/.claude/skills/gstack/${relPath}${suffix}`,
+    `~/.codex/skills/gstack/${relPath}${suffix}`,
+    `.claude/skills/gstack/${relPath}${suffix}`,
+    `.codex/skills/gstack/${relPath}${suffix}`,
+  ];
+}
+
+function fallbackCommand(relPath: string, args = ''): string {
+  return commandCandidates(relPath, args).join(' || ');
+}
+
+function stripAllowedToolsFrontmatter(content: string): string {
+  return content.replace(/^allowed-tools:\n(?:  - .+\n)+/m, '');
+}
+
+function applyUniversalCompatRewrites(content: string): string {
+  const replacements: Array<[string, string]> = [
+    ['~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null', fallbackCommand('bin/gstack-slug', '2>/dev/null')],
+    ['~/.claude/skills/gstack/bin/gstack-config get auto_upgrade 2>/dev/null', fallbackCommand('bin/gstack-config', 'get auto_upgrade 2>/dev/null')],
+    ['~/.claude/skills/gstack/bin/gstack-config set auto_upgrade true', fallbackCommand('bin/gstack-config', 'set auto_upgrade true')],
+    ['~/.claude/skills/gstack/bin/gstack-config set update_check false', fallbackCommand('bin/gstack-config', 'set update_check false')],
+    ['~/.claude/skills/gstack/bin/gstack-config set update_check true', fallbackCommand('bin/gstack-config', 'set update_check true')],
+    [
+      '~/.claude/skills/gstack/bin/gstack-update-check --force 2>/dev/null || \\\n.claude/skills/gstack/bin/gstack-update-check --force 2>/dev/null || true',
+      `${fallbackCommand('bin/gstack-update-check', '--force 2>/dev/null')} || true`,
+    ],
+    ['.claude/skills/review/checklist.md', '$GSTACK_DIR/review/checklist.md'],
+    ['.claude/skills/review/greptile-triage.md', '$GSTACK_DIR/review/greptile-triage.md'],
+    ['.claude/skills/review/TODOS-format.md', '$GSTACK_DIR/review/TODOS-format.md'],
+  ];
+
+  let next = content;
+  for (const [from, to] of replacements) {
+    next = next.split(from).join(to);
+  }
+
+  return next;
+}
 
 // ─── Placeholder Resolvers ──────────────────────────────────
 
@@ -98,20 +156,33 @@ function generatePreamble(): string {
   return `## Preamble (run first)
 
 \`\`\`bash
-_UPD=$(~/.claude/skills/gstack/bin/gstack-update-check 2>/dev/null || .claude/skills/gstack/bin/gstack-update-check 2>/dev/null || true)
+_GSTACK_DIR=""
+_ROOT=$(git rev-parse --show-toplevel 2>/dev/null || true)
+[ -n "$_ROOT" ] && [ -d "$_ROOT/.claude/skills/gstack" ] && _GSTACK_DIR="$_ROOT/.claude/skills/gstack"
+[ -z "$_GSTACK_DIR" ] && [ -n "$_ROOT" ] && [ -d "$_ROOT/.codex/skills/gstack" ] && _GSTACK_DIR="$_ROOT/.codex/skills/gstack"
+[ -z "$_GSTACK_DIR" ] && [ -d "$HOME/.claude/skills/gstack" ] && _GSTACK_DIR="$HOME/.claude/skills/gstack"
+[ -z "$_GSTACK_DIR" ] && [ -d "$HOME/.codex/skills/gstack" ] && _GSTACK_DIR="$HOME/.codex/skills/gstack"
+_UPD=""
+[ -n "$_GSTACK_DIR" ] && [ -x "$_GSTACK_DIR/bin/gstack-update-check" ] && _UPD=$("$_GSTACK_DIR/bin/gstack-update-check" 2>/dev/null || true)
+[ -z "$_UPD" ] && _UPD=$(${fallbackCommand('bin/gstack-update-check', '2>/dev/null')} || true)
 [ -n "$_UPD" ] && echo "$_UPD" || true
 mkdir -p ~/.gstack/sessions
 touch ~/.gstack/sessions/"$PPID"
 _SESSIONS=$(find ~/.gstack/sessions -mmin -120 -type f 2>/dev/null | wc -l | tr -d ' ')
 find ~/.gstack/sessions -mmin +120 -type f -delete 2>/dev/null || true
-_CONTRIB=$(~/.claude/skills/gstack/bin/gstack-config get gstack_contributor 2>/dev/null || true)
+_CONTRIB=""
+[ -n "$_GSTACK_DIR" ] && [ -x "$_GSTACK_DIR/bin/gstack-config" ] && _CONTRIB=$("$_GSTACK_DIR/bin/gstack-config" get gstack_contributor 2>/dev/null || true)
+[ -z "$_CONTRIB" ] && _CONTRIB=$(${fallbackCommand('bin/gstack-config', 'get gstack_contributor 2>/dev/null')} || true)
 _BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
 echo "BRANCH: $_BRANCH"
+echo "GSTACK_DIR: \${_GSTACK_DIR:-unknown}"
 _LAKE_SEEN=$([ -f ~/.gstack/.completeness-intro-seen ] && echo "yes" || echo "no")
 echo "LAKE_INTRO: $_LAKE_SEEN"
 \`\`\`
 
-If output shows \`UPGRADE_AVAILABLE <old> <new>\`: read \`~/.claude/skills/gstack/gstack-upgrade/SKILL.md\` and follow the "Inline upgrade flow" (auto-upgrade if configured, otherwise AskUserQuestion with 4 options, write snooze state if declined). If \`JUST_UPGRADED <from> <to>\`: tell user "Running gstack v{to} (just updated!)" and continue.
+Use the printed \`GSTACK_DIR\` value for any later gstack file reference. If a later step mentions \`.claude/skills/...\` or \`~/.claude/skills/...\`, treat it as shorthand for the equivalent path under \`GSTACK_DIR\`. If your environment does not expose tools literally named \`Read\`, \`Edit\`, or \`AskUserQuestion\`, use the equivalent built-in file viewer, editor, or user-prompt mechanism.
+
+If output shows \`UPGRADE_AVAILABLE <old> <new>\`: read \`$GSTACK_DIR/gstack-upgrade/SKILL.md\` and follow the "Inline upgrade flow" (auto-upgrade if configured, otherwise ask the user with 4 options, write snooze state if declined). If \`JUST_UPGRADED <from> <to>\`: tell user "Running gstack v{to} (just updated!)" and continue.
 
 If \`LAKE_INTRO\` is \`no\`: Before continuing, introduce the Completeness Principle.
 Tell the user: "gstack follows the **Boil the Lake** principle — always do the complete
@@ -207,7 +278,9 @@ function generateBrowseSetup(): string {
 _ROOT=$(git rev-parse --show-toplevel 2>/dev/null)
 B=""
 [ -n "$_ROOT" ] && [ -x "$_ROOT/.claude/skills/gstack/browse/dist/browse" ] && B="$_ROOT/.claude/skills/gstack/browse/dist/browse"
-[ -z "$B" ] && B=~/.claude/skills/gstack/browse/dist/browse
+[ -z "$B" ] && [ -n "$_ROOT" ] && [ -x "$_ROOT/.codex/skills/gstack/browse/dist/browse" ] && B="$_ROOT/.codex/skills/gstack/browse/dist/browse"
+[ -z "$B" ] && [ -x "$HOME/.claude/skills/gstack/browse/dist/browse" ] && B="$HOME/.claude/skills/gstack/browse/dist/browse"
+[ -z "$B" ] && [ -x "$HOME/.codex/skills/gstack/browse/dist/browse" ] && B="$HOME/.codex/skills/gstack/browse/dist/browse"
 if [ -x "$B" ]; then
   echo "READY: $B"
 else
@@ -859,10 +932,10 @@ function generateReviewDashboard(): string {
 After completing the review, read the review log and config to display the dashboard.
 
 \`\`\`bash
-eval $(~/.claude/skills/gstack/bin/gstack-slug 2>/dev/null)
+eval $(${fallbackCommand('bin/gstack-slug', '2>/dev/null')})
 cat ~/.gstack/projects/$SLUG/$BRANCH-reviews.jsonl 2>/dev/null || echo "NO_REVIEWS"
 echo "---CONFIG---"
-~/.claude/skills/gstack/bin/gstack-config get skip_eng_review 2>/dev/null || echo "false"
+${fallbackCommand('bin/gstack-config', 'get skip_eng_review 2>/dev/null')} || echo "false"
 \`\`\`
 
 Parse the output. Find the most recent entry for each skill (plan-ceo-review, plan-eng-review, plan-design-review). Ignore entries with timestamps older than 7 days. Display:
@@ -1067,7 +1140,8 @@ const GENERATED_HEADER = `<!-- AUTO-GENERATED from {{SOURCE}} — do not edit di
 function processTemplate(tmplPath: string): { outputPath: string; content: string } {
   const tmplContent = fs.readFileSync(tmplPath, 'utf-8');
   const relTmplPath = path.relative(ROOT, tmplPath);
-  const outputPath = tmplPath.replace(/\.tmpl$/, '');
+  const relOutputPath = path.relative(ROOT, tmplPath.replace(/\.tmpl$/, ''));
+  const outputPath = path.join(OUTPUT_ROOT, relOutputPath);
 
   // Replace placeholders
   let content = tmplContent.replace(/\{\{(\w+)\}\}/g, (match, name) => {
@@ -1075,6 +1149,11 @@ function processTemplate(tmplPath: string): { outputPath: string; content: strin
     if (!resolver) throw new Error(`Unknown placeholder {{${name}}} in ${relTmplPath}`);
     return resolver();
   });
+
+  content = applyUniversalCompatRewrites(content);
+  if (TARGET === 'codex') {
+    content = stripAllowedToolsFrontmatter(content);
+  }
 
   // Check for any remaining unresolved placeholders
   const remaining = content.match(/\{\{(\w+)\}\}/g);
@@ -1137,12 +1216,17 @@ for (const tmplPath of findTemplates()) {
       console.log(`FRESH: ${relOutput}`);
     }
   } else {
+    fs.mkdirSync(path.dirname(outputPath), { recursive: true });
     fs.writeFileSync(outputPath, content);
     console.log(`GENERATED: ${relOutput}`);
   }
 }
 
 if (DRY_RUN && hasChanges) {
-  console.error('\nGenerated SKILL.md files are stale. Run: bun run gen:skill-docs');
+  const extraArgs = [
+    TARGET !== 'universal' ? `--target ${TARGET}` : '',
+    OUT_DIR ? `--out-dir ${OUT_DIR}` : '',
+  ].filter(Boolean).join(' ');
+  console.error(`\nGenerated SKILL.md files are stale. Run: bun run gen:skill-docs${extraArgs ? ` -- ${extraArgs}` : ''}`);
   process.exit(1);
 }

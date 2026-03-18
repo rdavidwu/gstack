@@ -2,6 +2,7 @@ import { describe, test, expect } from 'bun:test';
 import { COMMAND_DESCRIPTIONS } from '../browse/src/commands';
 import { SNAPSHOT_FLAGS } from '../browse/src/snapshot';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 
 const ROOT = path.resolve(import.meta.dir, '..');
@@ -116,6 +117,31 @@ describe('gen-skill-docs', () => {
     expect(output).not.toContain('STALE');
   });
 
+  test('codex target can generate stripped copies into an alternate output dir', () => {
+    const outDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gstack-codex-'));
+    try {
+      const result = Bun.spawnSync([
+        'bun',
+        'run',
+        'scripts/gen-skill-docs.ts',
+        '--target', 'codex',
+        '--out-dir', outDir,
+      ], {
+        cwd: ROOT,
+        stdout: 'pipe',
+        stderr: 'pipe',
+      });
+      expect(result.exitCode).toBe(0);
+
+      const codexRootSkill = fs.readFileSync(path.join(outDir, 'SKILL.md'), 'utf-8');
+      expect(codexRootSkill).toContain('name:');
+      expect(codexRootSkill).toContain('description:');
+      expect(codexRootSkill).not.toContain('allowed-tools:');
+    } finally {
+      fs.rmSync(outDir, { recursive: true, force: true });
+    }
+  });
+
   test('no generated SKILL.md contains unresolved placeholders', () => {
     for (const skill of ALL_SKILLS) {
       const content = fs.readFileSync(path.join(ROOT, skill.dir, 'SKILL.md'), 'utf-8');
@@ -196,18 +222,22 @@ describe('gen-skill-docs', () => {
     const qaOnlyContent = fs.readFileSync(path.join(ROOT, 'qa-only', 'SKILL.md'), 'utf-8');
     expect(qaOnlyContent).toContain('Never fix bugs');
     expect(qaOnlyContent).toContain('NEVER fix anything');
-    // Should not have Edit, Glob, or Grep in allowed-tools
-    expect(qaOnlyContent).not.toMatch(/allowed-tools:[\s\S]*?Edit/);
-    expect(qaOnlyContent).not.toMatch(/allowed-tools:[\s\S]*?Glob/);
-    expect(qaOnlyContent).not.toMatch(/allowed-tools:[\s\S]*?Grep/);
+    const frontmatter = qaOnlyContent.match(/^---\n([\s\S]*?)\n---/);
+    expect(frontmatter).not.toBeNull();
+    const toolsBlock = frontmatter![1];
+    expect(toolsBlock).not.toContain('Edit');
+    expect(toolsBlock).not.toContain('Glob');
+    expect(toolsBlock).not.toContain('Grep');
   });
 
   test('qa has fix-loop tools and phases', () => {
     const qaContent = fs.readFileSync(path.join(ROOT, 'qa', 'SKILL.md'), 'utf-8');
-    // Should have Edit, Glob, Grep in allowed-tools
-    expect(qaContent).toContain('Edit');
-    expect(qaContent).toContain('Glob');
-    expect(qaContent).toContain('Grep');
+    const frontmatter = qaContent.match(/^---\n([\s\S]*?)\n---/);
+    expect(frontmatter).not.toBeNull();
+    const toolsBlock = frontmatter![1];
+    expect(toolsBlock).toContain('Edit');
+    expect(toolsBlock).toContain('Glob');
+    expect(toolsBlock).toContain('Grep');
     // Should have fix-loop phases
     expect(qaContent).toContain('Phase 7');
     expect(qaContent).toContain('Phase 8');
